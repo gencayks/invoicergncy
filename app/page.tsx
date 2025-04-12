@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import AdvancedInvoiceGenerator from "@/components/advanced-invoice-generator"
 import GncyLogo from "@/components/gncy-logo"
 import AppHeader from "@/components/app-header"
+import AuthForm from "@/components/auth-form"
 import { useAuth } from "@/hooks/use-auth"
 import { ClientProvider } from "@/hooks/use-clients"
 import { InvoiceProvider } from "@/hooks/use-invoices"
@@ -15,35 +15,36 @@ import { Button } from "@/components/ui/button"
 import { RefreshCcw } from "lucide-react"
 
 export default function Home() {
-  const router = useRouter()
   const { user, isLoading: authLoading } = useAuth()
   const { businesses, isLoading: businessLoading, refreshBusinesses } = useBusiness()
   const [mounted, setMounted] = useState(false)
   const [initializing, setInitializing] = useState(false)
   const [initializationError, setInitializationError] = useState<Error | null>(null)
-  const [forceRender, setForceRender] = useState(0)
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
 
   // Set mounted state to handle hydration
   useEffect(() => {
     setMounted(true)
-
-    // Force a re-render after 5 seconds if still loading
-    const timer = setTimeout(() => {
-      setForceRender((prev) => prev + 1)
-      console.log("Force re-render triggered")
-    }, 5000)
-
-    return () => clearTimeout(timer)
   }, [])
+
+  // Add a timeout to detect stuck loading states
+  useEffect(() => {
+    if ((authLoading || businessLoading || initializing) && mounted) {
+      const timer = setTimeout(() => {
+        setLoadingTimeout(true)
+      }, 10000) // 10 seconds timeout
+
+      return () => clearTimeout(timer)
+    }
+
+    setLoadingTimeout(false)
+  }, [authLoading, businessLoading, initializing, mounted])
 
   // Initialize user data if needed
   useEffect(() => {
     const initializeUserData = async () => {
-      if (!user || businessLoading || initializing) return
-
-      if (businesses.length === 0) {
+      if (user && !businessLoading && businesses.length === 0 && !initializing) {
         try {
-          console.log("Initializing user data...")
           setInitializing(true)
           setInitializationError(null)
 
@@ -62,48 +63,21 @@ export default function Home() {
       }
     }
 
-    if (mounted) {
-      initializeUserData()
-    }
-  }, [user, businesses, businessLoading, initializing, refreshBusinesses, mounted])
+    initializeUserData()
+  }, [user, businesses, businessLoading, initializing, refreshBusinesses])
 
   // Handle manual refresh when loading gets stuck
   const handleManualRefresh = () => {
     window.location.reload()
   }
 
-  // Determine if we're in a loading state
-  const isLoading = !mounted || authLoading || (user && businessLoading)
-
-  // Calculate if loading is taking too long
-  const [loadingTimeout, setLoadingTimeout] = useState(false)
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setLoadingTimeout(true)
-      }, 5000) // 5 seconds timeout (reduced from 10)
-      return () => clearTimeout(timer)
-    }
-    setLoadingTimeout(false)
-  }, [isLoading])
-
-  console.log({
-    mounted,
-    authLoading,
-    user: !!user,
-    businessLoading,
-    initializing,
-    businesses: businesses.length,
-    isLoading,
-  })
-
   // Show loading state
-  if (isLoading) {
+  if (!mounted || authLoading || businessLoading || initializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <GncyLogo />
-          <p className="mt-4 text-gray-500">Loading... ({forceRender})</p>
+          <p className="mt-4 text-gray-500">Loading...</p>
 
           {/* Show refresh button if loading takes too long */}
           {loadingTimeout && (
@@ -137,20 +111,9 @@ export default function Home() {
     )
   }
 
-  // If not authenticated, show a simple login button
+  // Show auth form if not authenticated
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <GncyLogo />
-          <h1 className="mt-6 text-2xl font-bold">Welcome to Invoice Generator</h1>
-          <p className="mt-2 text-gray-600">Please sign in to continue</p>
-          <Button onClick={() => router.push("/login")} className="mt-6">
-            Sign In
-          </Button>
-        </div>
-      </div>
-    )
+    return <AuthForm />
   }
 
   // Show invoice generator if authenticated

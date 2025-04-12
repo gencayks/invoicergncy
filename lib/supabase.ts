@@ -10,13 +10,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error("Missing Supabase environment variables. Check your .env file or environment settings.")
 }
 
-// Create Supabase client with improved configuration
+// Create Supabase client with retry options
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: "gncy-invoice-auth-token", // Use a specific storage key
   },
   global: {
     fetch: (...args) => {
@@ -29,7 +28,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// Helper function to get authenticated user with improved error handling
+// Helper function to get authenticated user
 export const getCurrentUser = async () => {
   try {
     const {
@@ -39,14 +38,6 @@ export const getCurrentUser = async () => {
 
     if (error) {
       console.error("Error getting session:", error.message)
-      // Clear local storage if we get a refresh token error
-      if (error.message?.includes("refresh_token_not_found")) {
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("gncy-invoice-auth-token")
-          // Reload the page to reset the auth state
-          window.location.reload()
-        }
-      }
       return null
     }
 
@@ -92,46 +83,5 @@ export const checkDatabaseConnection = async () => {
   } catch (error) {
     console.error("Database connection check failed:", error)
     return { connected: false, error }
-  }
-}
-
-// Add a function to handle auth errors and recovery
-export const handleAuthError = (error: any) => {
-  console.error("Auth error:", error)
-
-  // Check if it's a refresh token error
-  if (
-    error?.message?.includes("refresh_token_not_found") ||
-    (error?.name === "AuthApiError" && error?.status === 400)
-  ) {
-    if (typeof window !== "undefined") {
-      // Clear all auth data from local storage
-      localStorage.removeItem("gncy-invoice-auth-token")
-      localStorage.removeItem("supabase.auth.token")
-
-      // Redirect to login page
-      window.location.href = "/login"
-    }
-  }
-}
-
-// Add a function to check and refresh the session if needed
-export const ensureValidSession = async () => {
-  try {
-    const { data, error } = await supabase.auth.getSession()
-
-    if (error) {
-      handleAuthError(error)
-      return false
-    }
-
-    if (!data.session) {
-      return false
-    }
-
-    return true
-  } catch (error) {
-    handleAuthError(error)
-    return false
   }
 }

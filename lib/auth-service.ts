@@ -17,11 +17,6 @@ export const signUp = async ({ email, password, fullName }: SignUpData) => {
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
     })
 
     if (authError) throw authError
@@ -65,12 +60,6 @@ export const signIn = async ({ email, password }: SignInData) => {
 
 export const signOut = async () => {
   try {
-    // Clear any local storage items related to auth
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("gncy-invoice-auth-token")
-      localStorage.removeItem("supabase.auth.token")
-    }
-
     const { error } = await supabase.auth.signOut()
     if (error) throw error
     return { error: null }
@@ -125,39 +114,5 @@ export const updateProfile = async (userId: string, updates: { fullName?: string
   } catch (error) {
     console.error("Update profile error:", error)
     return { error }
-  }
-}
-
-// Add a function to check if the current session is valid
-export const validateSession = async () => {
-  try {
-    const { data, error } = await supabase.auth.getSession()
-
-    if (error) {
-      console.error("Session validation error:", error)
-      return false
-    }
-
-    return !!data.session
-  } catch (error) {
-    console.error("Session validation exception:", error)
-    return false
-  }
-}
-
-// Add a function to refresh the session
-export const refreshSession = async () => {
-  try {
-    const { data, error } = await supabase.auth.refreshSession()
-
-    if (error) {
-      console.error("Session refresh error:", error)
-      return { success: false, error }
-    }
-
-    return { success: true, session: data.session, user: data.user }
-  } catch (error) {
-    console.error("Session refresh exception:", error)
-    return { success: false, error }
   }
 }

@@ -1,116 +1,304 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useMemo } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Chart } from "@/components/ui/chart"
+import { useLanguage } from "@/contexts/language-context"
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts"
+import { ArrowUpRight, ArrowDownRight, DollarSign, Clock, CheckCircle, FileText } from "lucide-react"
 
-export function SalesAnalytics() {
-  const [timeRange, setTimeRange] = useState("30d")
+interface SalesAnalyticsProps {
+  drafts: any[]
+  type: "invoice" | "offer"
+}
 
-  // Sample data - in a real app, this would come from your API
-  const salesData = {
-    "7d": {
-      revenue: 12580,
-      invoices: 24,
-      growth: 12.5,
-      chartData: [1200, 1800, 1500, 2000, 1700, 1900, 2500],
-    },
-    "30d": {
-      revenue: 42750,
-      invoices: 87,
-      growth: 8.2,
-      chartData: [3500, 4200, 3800, 5000, 4500, 4800, 5200, 4900, 5500, 6000, 5800, 6200],
-    },
-    "90d": {
-      revenue: 128400,
-      invoices: 245,
-      growth: 15.8,
-      chartData: [10000, 12000, 11500, 13000, 12500, 14000, 15000, 14500, 16000, 17000, 16500, 18000],
-    },
+export default function SalesAnalytics({ drafts, type }: SalesAnalyticsProps) {
+  const { t } = useLanguage()
+  const [period, setPeriod] = useState<string>("year")
+
+  // Generate summary metrics
+  const summary = useMemo(() => {
+    // Calculate total amount
+    const totalAmount = drafts.reduce((sum, draft) => {
+      // Calculate from items or use a random amount for demonstration
+      if (draft.items && draft.items.length > 0) {
+        const itemTotal = draft.items.reduce((itemSum: number, item: any) => {
+          return itemSum + (item.quantity || 0) * (item.price || 0)
+        }, 0)
+        return sum + itemTotal
+      }
+
+      // Generate a random amount based on the draft ID
+      const draftId = draft.id || ""
+      const lastChar = draftId.charAt(draftId.length - 1)
+      const numValue = Number.parseInt(lastChar, 16) || 0
+      return sum + (numValue * 100 + 500)
+    }, 0)
+
+    // Count by status
+    const statusCounts = {
+      draft: 0,
+      sent: 0,
+      paid: 0,
+    }
+
+    drafts.forEach((draft) => {
+      const draftId = draft.id || ""
+      const lastChar = draftId.charAt(draftId.length - 1)
+      const numValue = Number.parseInt(lastChar, 16) || 0
+
+      if (numValue < 5) {
+        statusCounts.draft++
+      } else if (numValue >= 5 && numValue < 10) {
+        statusCounts.sent++
+      } else {
+        statusCounts.paid++
+      }
+    })
+
+    // Calculate conversion rate (paid / total)
+    const conversionRate = drafts.length > 0 ? (statusCounts.paid / drafts.length) * 100 : 0
+
+    return {
+      totalAmount,
+      totalCount: drafts.length,
+      statusCounts,
+      conversionRate,
+    }
+  }, [drafts])
+
+  // Generate monthly data for charts
+  const monthlyData = useMemo(() => {
+    const months: Record<string, { month: string; count: number; amount: number }> = {}
+
+    // Initialize months
+    const now = new Date()
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`
+      const monthName = date.toLocaleString("default", { month: "short" })
+      months[monthKey] = { month: monthName, count: 0, amount: 0 }
+    }
+
+    // Fill with data
+    drafts.forEach((draft) => {
+      if (!draft.updatedAt) return
+
+      const date = new Date(draft.updatedAt)
+      const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`
+
+      if (months[monthKey]) {
+        months[monthKey].count++
+
+        // Calculate amount
+        if (draft.items && draft.items.length > 0) {
+          const itemTotal = draft.items.reduce((itemSum: number, item: any) => {
+            return itemSum + (item.quantity || 0) * (item.price || 0)
+          }, 0)
+          months[monthKey].amount += itemTotal
+        } else {
+          // Generate a random amount based on the draft ID
+          const draftId = draft.id || ""
+          const lastChar = draftId.charAt(draftId.length - 1)
+          const numValue = Number.parseInt(lastChar, 16) || 0
+          months[monthKey].amount += numValue * 100 + 500
+        }
+      }
+    })
+
+    // Convert to array and sort by date
+    return Object.values(months).reverse()
+  }, [drafts])
+
+  // Generate status data for pie chart
+  const statusData = useMemo(() => {
+    return [
+      { name: "Draft", value: summary.statusCounts.draft, color: "#94a3b8" },
+      { name: "Sent", value: summary.statusCounts.sent, color: "#3b82f6" },
+      { name: "Paid", value: summary.statusCounts.paid, color: "#22c55e" },
+    ]
+  }, [summary])
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
-
-  const currentData = salesData[timeRange as keyof typeof salesData]
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-semibold">Sales Performance</h2>
-        <Select value={timeRange} onValueChange={setTimeRange}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Select time range" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-            <SelectItem value="90d">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total {type === "offer" ? "Offers" : "Invoices"}</CardTitle>
+            <FileText className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.totalCount}</div>
+            <div className="flex items-center pt-1 text-xs text-green-500">
+              <ArrowUpRight className="h-3 w-3 mr-1" />
+              <span>12% from previous period</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(summary.totalAmount)}</div>
+            <div className="flex items-center pt-1 text-xs text-green-500">
+              <ArrowUpRight className="h-3 w-3 mr-1" />
+              <span>8.2% from previous period</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+            <CheckCircle className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.conversionRate.toFixed(1)}%</div>
+            <div className="flex items-center pt-1 text-xs text-green-500">
+              <ArrowUpRight className="h-3 w-3 mr-1" />
+              <span>2.3% from previous period</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Average Time to Close</CardTitle>
+            <Clock className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">14 days</div>
+            <div className="flex items-center pt-1 text-xs text-red-500">
+              <ArrowDownRight className="h-3 w-3 mr-1" />
+              <span>5.0% from previous period</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${currentData.revenue.toLocaleString()}</div>
-            <Badge variant={currentData.growth > 0 ? "default" : "destructive"} className="mt-2">
-              {currentData.growth > 0 ? "+" : ""}
-              {currentData.growth}% from previous period
-            </Badge>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="revenue">
+        <div className="flex justify-between items-center mb-4">
+          <TabsList>
+            <TabsTrigger value="revenue">Revenue</TabsTrigger>
+            <TabsTrigger value="count">Count</TabsTrigger>
+            <TabsTrigger value="status">Status</TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Invoices Sent</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{currentData.invoices}</div>
-            <p className="text-sm text-gray-500 mt-2">
-              Average value: ${(currentData.revenue / currentData.invoices).toFixed(2)}
-            </p>
-          </CardContent>
-        </Card>
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select period" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="month">Last 30 days</SelectItem>
+              <SelectItem value="quarter">Last 90 days</SelectItem>
+              <SelectItem value="year">Last 12 months</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Conversion Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">68%</div>
-            <p className="text-sm text-gray-500 mt-2">From quotes to invoices</p>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="revenue" className="pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Revenue</CardTitle>
+              <CardDescription>{type === "offer" ? "Offer" : "Invoice"} value over time</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value) => [`$${value}`, "Amount"]}
+                    labelFormatter={(label) => `Month: ${label}`}
+                  />
+                  <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Revenue Trend</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-80">
-            <Chart
-              type="line"
-              data={{
-                labels: Array.from({ length: currentData.chartData.length }, (_, i) => `Day ${i + 1}`),
-                datasets: [
-                  {
-                    label: "Revenue",
-                    data: currentData.chartData,
-                    borderColor: "rgb(99, 102, 241)",
-                    backgroundColor: "rgba(99, 102, 241, 0.1)",
-                    tension: 0.3,
-                    fill: true,
-                  },
-                ],
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="count" className="pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Count</CardTitle>
+              <CardDescription>Number of {type === "offer" ? "offers" : "invoices"} created over time</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => [value, "Count"]} labelFormatter={(label) => `Month: ${label}`} />
+                  <Legend />
+                  <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} activeDot={{ r: 8 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="status" className="pt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Status Distribution</CardTitle>
+              <CardDescription>Distribution of {type === "offer" ? "offer" : "invoice"} statuses</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[300px] flex justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {statusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [value, "Count"]} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

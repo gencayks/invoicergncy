@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { createContext, useContext, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import type { User, Session } from "@supabase/supabase-js"
@@ -16,7 +17,6 @@ type AuthContextType = {
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<{ error: Error | null }>
   resetPassword: (email: string) => Promise<{ error: Error | null }>
-  refreshSession: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -27,17 +27,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
-  const [initAttempted, setInitAttempted] = useState(false)
 
   useEffect(() => {
     // Get initial session
     const initAuth = async () => {
       try {
-        console.log("Initializing auth...")
         const { data, error } = await supabase.auth.getSession()
 
         if (error) {
-          console.error("Auth error:", error)
           throw error
         }
 
@@ -59,42 +56,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         // Always set loading to false, even if there's an error
         setIsLoading(false)
-        setInitAttempted(true)
-        console.log("Auth initialization complete")
       }
     }
 
-    // Add a safety timeout to prevent infinite loading
-    const safetyTimeout = setTimeout(() => {
-      if (isLoading) {
-        console.warn("Auth initialization timed out")
-        setIsLoading(false)
-        setInitAttempted(true)
-      }
-    }, 5000) // 5 second timeout
-
     initAuth()
 
-    return () => clearTimeout(safetyTimeout)
-  }, [])
-
-  useEffect(() => {
     // Listen for auth changes
-    if (!initAttempted) return
-
-    console.log("Setting up auth state change listener")
-
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log("Auth state changed:", event)
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setSession(session)
+      setUser(session?.user ?? null)
 
-      setSession(newSession)
-      setUser(newSession?.user ?? null)
-
-      if (newSession?.user) {
+      if (session?.user) {
         try {
-          const profile = await getUserProfile(newSession.user.id)
+          const profile = await getUserProfile(session.user.id)
           setProfile(profile)
         } catch (profileError) {
           console.error("Error fetching user profile on auth change:", profileError)
@@ -107,26 +83,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
-      console.log("Cleaning up auth state change listener")
       subscription.unsubscribe()
     }
-  }, [initAttempted])
+  }, [])
 
   const signIn = async (email: string, password: string) => {
     try {
-      setIsLoading(true)
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       return { error }
     } catch (error) {
       return { error: error as Error }
-    } finally {
-      setIsLoading(false)
     }
   }
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      setIsLoading(true)
       const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -154,42 +125,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error: null }
     } catch (error) {
       return { error: error as Error }
-    } finally {
-      setIsLoading(false)
     }
   }
 
   const signOut = async () => {
     try {
-      setIsLoading(true)
       const { error } = await supabase.auth.signOut()
-
-      if (!error) {
-        // Clear local state
-        setUser(null)
-        setSession(null)
-        setProfile(null)
-      }
-
       return { error }
     } catch (error) {
       return { error: error as Error }
-    } finally {
-      setIsLoading(false)
     }
   }
 
   const resetPassword = async (email: string) => {
     try {
-      setIsLoading(true)
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       })
       return { error }
     } catch (error) {
       return { error: error as Error }
-    } finally {
-      setIsLoading(false)
     }
   }
 

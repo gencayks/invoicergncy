@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Check, Globe } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-export function LanguageSelector() {
+export default function LanguageSelector() {
   const { language, setLanguage, t } = useLanguage()
 
   return (
