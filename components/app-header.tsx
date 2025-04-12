@@ -18,15 +18,20 @@ import {
 import LanguageSelector from "./language-selector"
 import { useLanguage } from "@/contexts/language-context"
 
-export default function AppHeader() {
+export function AppHeader() {
   const { user, signOut } = useAuth()
   const { t } = useLanguage()
   const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   const handleSignOut = async () => {
-    await signOut()
-    router.push("/")
+    try {
+      await signOut()
+    } catch (error) {
+      console.error("Error signing out:", error)
+    } finally {
+      router.push("/")
+    }
   }
 
   return (
@@ -45,6 +50,9 @@ export default function AppHeader() {
               </Link>
               <Link href="/sales" className="text-gray-600 hover:text-gray-900">
                 {t("sales")}
+              </Link>
+              <Link href="/analytics" className="text-gray-600 hover:text-gray-900">
+                {t("analytics")}
               </Link>
               <LanguageSelector />
               <span className="text-sm text-gray-600">{user.email}</span>
@@ -90,6 +98,9 @@ export default function AppHeader() {
                     </Link>
                     <Link href="/sales" className="text-gray-600 hover:text-gray-900">
                       {t("sales")}
+                    </Link>
+                    <Link href="/analytics" className="text-gray-600 hover:text-gray-900">
+                      {t("analytics")}
                     </Link>
                     <div className="py-2">
                       <LanguageSelector />
