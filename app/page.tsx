@@ -2,102 +2,189 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import AdvancedInvoiceGenerator from "@/components/advanced-invoice-generator"
+import GncyLogo from "@/components/gncy-logo"
+import AppHeader from "@/components/app-header"
 import { useAuth } from "@/hooks/use-auth"
+import { ClientProvider } from "@/hooks/use-clients"
+import { InvoiceProvider } from "@/hooks/use-invoices"
+import { DraftsProvider } from "@/hooks/use-drafts"
+import { useBusiness } from "@/hooks/use-business"
+import { createBusiness } from "@/lib/business-service"
 import { Button } from "@/components/ui/button"
-import { AppHeader } from "@/components/app-header"
-import { supabase, ensureValidSession } from "@/lib/supabase"
+import { RefreshCcw } from "lucide-react"
 
 export default function Home() {
-  const { user, isLoading, refreshSession } = useAuth()
   const router = useRouter()
-  const [isCheckingSession, setIsCheckingSession] = useState(true)
-  const [sessionError, setSessionError] = useState<string | null>(null)
+  const { user, isLoading: authLoading } = useAuth()
+  const { businesses, isLoading: businessLoading, refreshBusinesses } = useBusiness()
+  const [mounted, setMounted] = useState(false)
+  const [initializing, setInitializing] = useState(false)
+  const [initializationError, setInitializationError] = useState<Error | null>(null)
+  const [forceRender, setForceRender] = useState(0)
 
+  // Set mounted state to handle hydration
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        // Check if we have a valid session
-        const isValid = await ensureValidSession()
+    setMounted(true)
 
-        if (!isValid) {
-          console.log("No valid session found, redirecting to login")
-          router.push("/login")
-          return
+    // Force a re-render after 5 seconds if still loading
+    const timer = setTimeout(() => {
+      setForceRender((prev) => prev + 1)
+      console.log("Force re-render triggered")
+    }, 5000)
+
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Initialize user data if needed
+  useEffect(() => {
+    const initializeUserData = async () => {
+      if (!user || businessLoading || initializing) return
+
+      if (businesses.length === 0) {
+        try {
+          console.log("Initializing user data...")
+          setInitializing(true)
+          setInitializationError(null)
+
+          // Create default business for new user
+          await createBusiness(user.id, {
+            name: "My Business",
+            email: user.email || "",
+          })
+          await refreshBusinesses()
+        } catch (error) {
+          console.error("Error initializing user data:", error)
+          setInitializationError(error as Error)
+        } finally {
+          setInitializing(false)
         }
-
-        setIsCheckingSession(false)
-      } catch (error) {
-        console.error("Error checking session:", error)
-        setSessionError("There was a problem with your authentication. Please try logging in again.")
-        setIsCheckingSession(false)
       }
     }
 
-    if (!isLoading) {
-      checkSession()
+    if (mounted) {
+      initializeUserData()
     }
-  }, [isLoading, router])
+  }, [user, businesses, businessLoading, initializing, refreshBusinesses, mounted])
 
-  // Handle session recovery
-  const handleRecoverSession = async () => {
-    setIsCheckingSession(true)
-    setSessionError(null)
-
-    try {
-      // Clear any existing auth data
-      await supabase.auth.signOut()
-
-      // Refresh the page to reset the auth state
-      window.location.href = "/login"
-    } catch (error) {
-      console.error("Error recovering session:", error)
-      setSessionError("Unable to recover session. Please try again.")
-      setIsCheckingSession(false)
-    }
+  // Handle manual refresh when loading gets stuck
+  const handleManualRefresh = () => {
+    window.location.reload()
   }
 
-  if (isLoading || isCheckingSession) {
+  // Determine if we're in a loading state
+  const isLoading = !mounted || authLoading || (user && businessLoading)
+
+  // Calculate if loading is taking too long
+  const [loadingTimeout, setLoadingTimeout] = useState(false)
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setLoadingTimeout(true)
+      }, 5000) // 5 seconds timeout (reduced from 10)
+      return () => clearTimeout(timer)
+    }
+    setLoadingTimeout(false)
+  }, [isLoading])
+
+  console.log({
+    mounted,
+    authLoading,
+    user: !!user,
+    businessLoading,
+    initializing,
+    businesses: businesses.length,
+    isLoading,
+  })
+
+  // Show loading state
+  if (isLoading) {
     return (
-      <div className="flex min-h-screen flex-col">
-        <AppHeader />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-4 text-lg">Loading...</p>
-          </div>
-        </main>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <GncyLogo />
+          <p className="mt-4 text-gray-500">Loading... ({forceRender})</p>
+
+          {/* Show refresh button if loading takes too long */}
+          {loadingTimeout && (
+            <div className="mt-6">
+              <p className="text-amber-600 mb-2">Loading is taking longer than expected.</p>
+              <Button onClick={handleManualRefresh} className="flex items-center">
+                <RefreshCcw className="h-4 w-4 mr-2" />
+                Refresh Page
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
 
-  if (sessionError) {
+  // Show error state if initialization failed
+  if (initializationError) {
     return (
-      <div className="flex min-h-screen flex-col">
-        <AppHeader />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md mx-auto p-6 bg-red-50 rounded-lg border border-red-200">
-            <h2 className="text-xl font-semibold text-red-700 mb-2">Authentication Error</h2>
-            <p className="mb-4 text-red-600">{sessionError}</p>
-            <Button onClick={handleRecoverSession}>Return to Login</Button>
-          </div>
-        </main>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center max-w-md p-6">
+          <GncyLogo />
+          <p className="mt-4 text-red-600">Error initializing application data.</p>
+          <p className="mt-2 text-gray-600 text-sm">{initializationError.message}</p>
+          <Button onClick={handleManualRefresh} className="mt-4 flex items-center mx-auto">
+            <RefreshCcw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+        </div>
       </div>
     )
   }
 
+  // If not authenticated, show a simple login button
   if (!user) {
-    // This should not happen due to the redirect in useEffect, but just in case
-    router.push("/login")
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center">
+          <GncyLogo />
+          <h1 className="mt-6 text-2xl font-bold">Welcome to Invoice Generator</h1>
+          <p className="mt-2 text-gray-600">Please sign in to continue</p>
+          <Button onClick={() => router.push("/login")} className="mt-6">
+            Sign In
+          </Button>
+        </div>
+      </div>
+    )
   }
 
-  // User is authenticated, render the home page
+  // Show invoice generator if authenticated
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       <AppHeader />
-      <main className="flex-1 container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6">Welcome to gncy Invoice Generator</h1>
-        {/* Rest of your home page content */}
+      <main className="flex-1 py-10">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="mb-8">
+            <h1 className="text-4xl font-serif mt-6 mb-4">Advanced Invoice Generator | Create Professional Invoices</h1>
+            <p className="text-gray-600 mb-4">
+              Create and send invoices easily with our powerful invoice maker. Use customizable templates, automated
+              reminders, and payment integrations to streamline your invoicing process. Not sure what an invoice is?
+              Read our{" "}
+              <a href="/documentation" className="text-blue-600 hover:underline">
+                invoice guide
+              </a>
+              .
+            </p>
+            <div className="bg-blue-50 border border-blue-100 rounded-md p-3 text-sm text-blue-700">
+              <p>
+                <strong>Note:</strong> Your drafts are currently stored in your browser's local storage. They will be
+                available on this device only.
+              </p>
+            </div>
+          </div>
+          <ClientProvider>
+            <InvoiceProvider>
+              <DraftsProvider>
+                <AdvancedInvoiceGenerator />
+              </DraftsProvider>
+            </InvoiceProvider>
+          </ClientProvider>
+        </div>
       </main>
     </div>
   )

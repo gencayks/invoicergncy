@@ -1,207 +1,106 @@
 "use client"
 
 import { useState } from "react"
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useLanguage } from "@/contexts/language-context"
-import { useToast } from "@/hooks/use-toast"
-import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { format } from "date-fns"
-import { Edit, Trash2, Copy, MoreVertical } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Plus, MoreHorizontal } from "lucide-react"
 
-interface SalesKanbanProps {
-  drafts: any[]
-  type: "invoice" | "offer"
-  onEdit: (id: string) => void
-  onDelete: (id: string) => void
-  onDuplicate: (id: string) => void
-  isDeleting: string | null
+// Sample data - in a real app, this would come from your API
+const initialColumns = {
+  leads: [
+    { id: "l1", title: "ABC Corp", value: "$5,200", date: "2023-04-15" },
+    { id: "l2", title: "XYZ Industries", value: "$8,750", date: "2023-04-18" },
+    { id: "l3", title: "Acme Co", value: "$3,400", date: "2023-04-20" },
+  ],
+  negotiation: [
+    { id: "n1", title: "Global Tech", value: "$12,000", date: "2023-04-10" },
+    { id: "n2", title: "Innovative Solutions", value: "$7,500", date: "2023-04-12" },
+  ],
+  proposal: [
+    { id: "p1", title: "Enterprise Inc", value: "$15,800", date: "2023-04-05" },
+    { id: "p2", title: "Future Systems", value: "$9,200", date: "2023-04-08" },
+  ],
+  closed: [
+    { id: "c1", title: "Tech Giants", value: "$22,500", date: "2023-04-01" },
+    { id: "c2", title: "Smart Solutions", value: "$11,300", date: "2023-04-03" },
+  ],
 }
 
-export default function SalesKanban({ drafts, type, onEdit, onDelete, onDuplicate, isDeleting }: SalesKanbanProps) {
-  const { t } = useLanguage()
-  const { toast } = useToast()
-
-  // Group drafts by status
-  const [columns, setColumns] = useState({
-    draft: {
-      id: "draft",
-      title: "Draft",
-      items: drafts.filter((draft) => {
-        const draftId = draft.id || ""
-        const lastChar = draftId.charAt(draftId.length - 1)
-        const numValue = Number.parseInt(lastChar, 16) || 0
-        return numValue < 5
-      }),
-    },
-    sent: {
-      id: "sent",
-      title: "Sent",
-      items: drafts.filter((draft) => {
-        const draftId = draft.id || ""
-        const lastChar = draftId.charAt(draftId.length - 1)
-        const numValue = Number.parseInt(lastChar, 16) || 0
-        return numValue >= 5 && numValue < 10
-      }),
-    },
-    paid: {
-      id: "paid",
-      title: "Paid",
-      items: drafts.filter((draft) => {
-        const draftId = draft.id || ""
-        const lastChar = draftId.charAt(draftId.length - 1)
-        const numValue = Number.parseInt(lastChar, 16) || 0
-        return numValue >= 10
-      }),
-    },
-  })
-
-  const getAmount = (draft: any) => {
-    // Calculate total from items or use a random amount for demonstration
-    if (draft.items && draft.items.length > 0) {
-      const total = draft.items.reduce((sum: number, item: any) => {
-        return sum + (item.quantity || 0) * (item.price || 0)
-      }, 0)
-      return total.toFixed(2)
-    }
-
-    // Generate a random amount based on the draft ID
-    const draftId = draft.id || ""
-    const lastChar = draftId.charAt(draftId.length - 1)
-    const numValue = Number.parseInt(lastChar, 16) || 0
-    return (numValue * 100 + 500).toFixed(2)
-  }
-
-  const onDragEnd = (result: any) => {
-    if (!result.destination) return
-
-    const { source, destination } = result
-
-    // If dropped in a different column
-    if (source.droppableId !== destination.droppableId) {
-      const sourceColumn = columns[source.droppableId as keyof typeof columns]
-      const destColumn = columns[destination.droppableId as keyof typeof columns]
-      const sourceItems = [...sourceColumn.items]
-      const destItems = [...destColumn.items]
-      const [removed] = sourceItems.splice(source.index, 1)
-      destItems.splice(destination.index, 0, removed)
-
-      setColumns({
-        ...columns,
-        [source.droppableId]: {
-          ...sourceColumn,
-          items: sourceItems,
-        },
-        [destination.droppableId]: {
-          ...destColumn,
-          items: destItems,
-        },
-      })
-
-      // In a real app, we would update the status in the database
-      toast({
-        title: "Status updated",
-        description: `${type === "offer" ? "Offer" : "Invoice"} moved to ${destColumn.title}`,
-      })
-    } else {
-      // If dropped in the same column
-      const column = columns[source.droppableId as keyof typeof columns]
-      const copiedItems = [...column.items]
-      const [removed] = copiedItems.splice(source.index, 1)
-      copiedItems.splice(destination.index, 0, removed)
-
-      setColumns({
-        ...columns,
-        [source.droppableId]: {
-          ...column,
-          items: copiedItems,
-        },
-      })
-    }
-  }
+export function SalesKanban() {
+  const [columns, setColumns] = useState(initialColumns)
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 overflow-x-auto pb-4">
-      <DragDropContext onDragEnd={onDragEnd}>
-        {Object.entries(columns).map(([columnId, column]) => (
-          <div key={columnId} className="min-w-[300px] lg:w-1/3">
-            <div className="bg-gray-100 rounded-md p-4 h-full">
-              <h3 className="font-medium mb-4 flex justify-between items-center">
-                <span>{column.title}</span>
-                <span className="bg-white text-xs font-normal py-1 px-2 rounded-full">{column.items.length}</span>
-              </h3>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-semibold">Sales Pipeline</h2>
+        <Button size="sm">
+          <Plus className="h-4 w-4 mr-2" />
+          Add Deal
+        </Button>
+      </div>
 
-              <Droppable droppableId={columnId}>
-                {(provided) => (
-                  <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3 min-h-[200px]">
-                    {column.items.map((draft, index) => (
-                      <Draggable key={draft.id} draggableId={draft.id} index={index}>
-                        {(provided) => (
-                          <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}>
-                            <Card className="bg-white">
-                              <CardHeader className="p-3 pb-0">
-                                <CardTitle className="text-sm font-medium flex justify-between items-start">
-                                  <span>{draft.invoiceNumber || `#${draft.id?.substring(0, 8)}`}</span>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem onClick={() => onEdit(draft.id)}>
-                                        <Edit className="h-4 w-4 mr-2" />
-                                        {t("edit")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem onClick={() => onDuplicate(draft.id)}>
-                                        <Copy className="h-4 w-4 mr-2" />
-                                        {t("duplicate")}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        className="text-red-600"
-                                        onClick={() => onDelete(draft.id)}
-                                        disabled={isDeleting === draft.id}
-                                      >
-                                        {isDeleting === draft.id ? (
-                                          <LoadingSpinner size="sm" className="mr-2" />
-                                        ) : (
-                                          <Trash2 className="h-4 w-4 mr-2" />
-                                        )}
-                                        {t("delete")}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </CardTitle>
-                              </CardHeader>
-                              <CardContent className="p-3 pt-2">
-                                <p className="text-xs text-gray-500 truncate">
-                                  {draft.notes?.substring(0, 50) || "No description"}
-                                </p>
-                              </CardContent>
-                              <CardFooter className="p-3 pt-0 flex justify-between items-center">
-                                <div className="text-xs text-gray-500">
-                                  {draft.updatedAt ? format(new Date(draft.updatedAt), "MMM d, yyyy") : "-"}
-                                </div>
-                                <div className="font-medium text-sm">
-                                  {draft.currency || "$"}
-                                  {getAmount(draft)}
-                                </div>
-                              </CardFooter>
-                            </Card>
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <KanbanColumn
+          title="Leads"
+          count={columns.leads.length}
+          items={columns.leads}
+          color="bg-blue-100 text-blue-800"
+        />
+
+        <KanbanColumn
+          title="Negotiation"
+          count={columns.negotiation.length}
+          items={columns.negotiation}
+          color="bg-yellow-100 text-yellow-800"
+        />
+
+        <KanbanColumn
+          title="Proposal"
+          count={columns.proposal.length}
+          items={columns.proposal}
+          color="bg-purple-100 text-purple-800"
+        />
+
+        <KanbanColumn
+          title="Closed Won"
+          count={columns.closed.length}
+          items={columns.closed}
+          color="bg-green-100 text-green-800"
+        />
+      </div>
+    </div>
+  )
+}
+
+function KanbanColumn({ title, count, items, color }) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="font-medium">{title}</h3>
+        <Badge className={color}>{count}</Badge>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-3 flex-1 min-h-[500px]">
+        {items.map((item) => (
+          <Card key={item.id} className="mb-3 cursor-pointer hover:shadow-md transition-shadow">
+            <CardContent className="p-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-medium">{item.title}</h4>
+                  <p className="text-sm text-gray-500">{item.date}</p>
+                </div>
+                <div className="flex items-center">
+                  <span className="font-semibold text-gray-900">{item.value}</span>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 ml-2">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ))}
-      </DragDropContext>
+      </div>
     </div>
   )
 }

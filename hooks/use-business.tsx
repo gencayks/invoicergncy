@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
-import { createContext, useContext, useState, useEffect } from "react"
-import { getUserBusinesses, createBusiness, updateBusiness, deleteBusiness } from "@/lib/business-service"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 import { useAuth } from "./use-auth"
+import * as BusinessService from "@/lib/business-service"
 
 type BusinessContextType = {
   businesses: any[]
@@ -12,9 +11,6 @@ type BusinessContextType = {
   isLoading: boolean
   error: Error | null
   setCurrentBusiness: (business: any) => void
-  createNewBusiness: (name: string, data?: any) => Promise<any>
-  updateCurrentBusiness: (data: any) => Promise<any>
-  deleteCurrentBusiness: () => Promise<any>
   refreshBusinesses: () => Promise<void>
 }
 
@@ -24,109 +20,64 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const [businesses, setBusinesses] = useState<any[]>([])
   const [currentBusiness, setCurrentBusiness] = useState<any | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const [loadAttempts, setLoadAttempts] = useState(0)
+  const [loadAttempted, setLoadAttempted] = useState(false)
 
-  const loadBusinesses = async () => {
+  const loadBusinesses = useCallback(async () => {
     if (!user) {
       setBusinesses([])
       setCurrentBusiness(null)
       setIsLoading(false)
+      setLoadAttempted(true)
       return
     }
 
     try {
+      console.log("Loading businesses for user:", user.id)
       setIsLoading(true)
       setError(null)
 
-      const { businesses, error } = await getUserBusinesses(user.id)
+      const { businesses: fetchedBusinesses, error: fetchError } = await BusinessService.getUserBusinesses(user.id)
 
-      if (error) throw error
+      if (fetchError) throw fetchError
 
-      setBusinesses(businesses)
+      setBusinesses(fetchedBusinesses || [])
 
-      // Set current business to the first one if not already set
-      if (businesses.length > 0 && !currentBusiness) {
-        setCurrentBusiness(businesses[0])
-      } else if (businesses.length === 0) {
-        setCurrentBusiness(null)
+      // Set current business if not already set
+      if (fetchedBusinesses && fetchedBusinesses.length > 0 && !currentBusiness) {
+        setCurrentBusiness(fetchedBusinesses[0])
       }
     } catch (err) {
-      console.error("Error loading businesses:", err)
+      console.error("Failed to load businesses:", err)
       setError(err as Error)
-
-      // If we've tried less than 3 times, try again after a delay
-      if (loadAttempts < 3) {
-        setTimeout(() => {
-          setLoadAttempts((prev) => prev + 1)
-        }, 2000) // Retry after 2 seconds
-      }
+      setBusinesses([])
     } finally {
       setIsLoading(false)
+      setLoadAttempted(true)
+      console.log("Finished loading businesses")
     }
-  }
+  }, [user, currentBusiness])
 
-  // Load businesses when user changes or when loadAttempts changes (for retries)
+  // Load businesses when user changes
   useEffect(() => {
+    // Add a safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn("Business loading timed out")
+        setIsLoading(false)
+        setLoadAttempted(true)
+      }
+    }, 5000) // 5 second timeout
+
     loadBusinesses()
-  }, [user, loadAttempts])
 
-  const refreshBusinesses = async () => {
+    return () => clearTimeout(safetyTimeout)
+  }, [user, loadBusinesses])
+
+  const refreshBusinesses = useCallback(async () => {
     await loadBusinesses()
-  }
-
-  const createNewBusiness = async (name: string, data?: any) => {
-    if (!user) throw new Error("User not authenticated")
-
-    try {
-      const { business, error } = await createBusiness(user.id, {
-        name,
-        ...data,
-      })
-
-      if (error) throw error
-
-      await refreshBusinesses()
-      return business
-    } catch (err) {
-      setError(err as Error)
-      throw err
-    }
-  }
-
-  const updateCurrentBusiness = async (data: any) => {
-    if (!currentBusiness || !user) throw new Error("No business selected or user not authenticated")
-
-    try {
-      const { business, error } = await updateBusiness(currentBusiness.id, data, user.id)
-
-      if (error) throw error
-
-      await refreshBusinesses()
-      return business
-    } catch (err) {
-      setError(err as Error)
-      throw err
-    }
-  }
-
-  const deleteCurrentBusiness = async () => {
-    if (!currentBusiness || !user) throw new Error("No business selected or user not authenticated")
-
-    try {
-      const { error } = await deleteBusiness(currentBusiness.id, user.id)
-
-      if (error) throw error
-
-      setCurrentBusiness(null)
-      await refreshBusinesses()
-      return true
-    } catch (err) {
-      setError(err as Error)
-      throw err
-    }
-  }
+  }, [loadBusinesses])
 
   const value = {
     businesses,
@@ -134,9 +85,6 @@ export function BusinessProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     error,
     setCurrentBusiness,
-    createNewBusiness,
-    updateCurrentBusiness,
-    deleteCurrentBusiness,
     refreshBusinesses,
   }
 

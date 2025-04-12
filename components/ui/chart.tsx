@@ -2,8 +2,25 @@
 
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
+import { useRef } from "react"
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from "chart.js"
+import { Line, Bar } from "react-chartjs-2"
 
 import { cn } from "@/lib/utils"
+
+// Register ChartJS components
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler)
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const
@@ -181,6 +198,39 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   }
 
   return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config]
+}
+
+interface ChartProps {
+  type: "line" | "bar"
+  data: any
+  options?: any
+}
+
+export function Chart({ type, data, options = {} }: ChartProps) {
+  const chartRef = useRef(null)
+
+  const defaultOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "top" as const,
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+      },
+    },
+  }
+
+  const mergedOptions = { ...defaultOptions, ...options }
+
+  return type === "line" ? (
+    <Line ref={chartRef} data={data} options={mergedOptions} />
+  ) : (
+    <Bar ref={chartRef} data={data} options={mergedOptions} />
+  )
 }
 
 export { ChartLegend, ChartLegendContent, ChartStyle }
